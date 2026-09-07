@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="circle">
+      <circle cx="32" cy="32" r="32" />
+    </clipPath>
+  </defs>
+  <image href="https://i.ibb.co/hFbqD7RH/Screenshot-2026-09-02-161323.png" width="64" height="64" preserveAspectRatio="xMidYMid slice" clip-path="url(#circle)" />
+</svg>

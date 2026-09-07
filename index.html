@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RRQC</title>
+    <link rel="icon" type="image/png" href="https://i.ibb.co/hFbqD7RH/Screenshot-2026-09-02-161323.png">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="app-layout">
+
+    <div class="mobile-topbar">
+        <button class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="เปิดเมนู">☰</button>
+        <img class="mobile-topbar-logo" src="https://i.ibb.co/hFbqD7RH/Screenshot-2026-09-02-161323.png" alt="โลโก้">
+        <span class="mobile-topbar-title">ร่ำรวย จำกัด</span>
+    </div>
+
+    <div id="mobileOverlay" class="mobile-overlay" onclick="closeMobileMenu()"></div>
+
+    <div class="sidebar" id="sidebarNav">
+
+        <button class="sidebar-close-btn" onclick="closeMobileMenu()" aria-label="ปิดเมนู">✕</button>
+
+        <div class="company-logo">
+            <img class="company-logo-img" src="https://i.ibb.co/hFbqD7RH/Screenshot-2026-09-02-161323.png" alt="โลโก้ บริษัท ร่ำรวย จำกัด">
+            <div class="company-text">
+                <div class="company-name">บริษัท ร่ำรวย จำกัด</div>
+                <div class="company-sub">RUM RUAY CO., LTD. · QC SYSTEM</div>
+            </div>
+        </div>
+
+        <button id="btnTabScan" class="tab-btn active" onclick="switchPage('pageScan', 'btnTabScan')">
+            <span>🔍 ตรวจสอบสินค้า (QC Scan)</span>
+        </button>
+
+        <button id="btnTabOrders" class="tab-btn" onclick="switchPage('pageOrders', 'btnTabOrders')">
+            <span>📋 รายการออเดอร์ (Orders)</span>
+        </button>
+
+        <button id="btnTabProducts" class="tab-btn" onclick="switchPage('pageProducts', 'btnTabProducts')">
+            <span>📦 จัดการสินค้า (Products)</span>
+        </button>
+
+        <div class="dropdown-container">
+            <button id="btnSubDropdown" class="tab-btn" onclick="toggleSubMenu()">
+                <span>🔄 สินค้าทดแทน (Substitutes)</span>
+                <span id="arrowSub">▼</span>
+            </button>
+            <div id="subMenuSubstitutes" class="sub-menu">
+                <button id="btnSubReplace" class="sub-btn" onclick="switchPage('pageSubReplace', 'btnSubReplace', true)">
+                    🔄 เปลี่ยนสินค้าทดแทน
+                </button>
+                <button id="btnSubDelete" class="sub-btn" onclick="switchPage('pageSubDelete', 'btnSubDelete', true)">
+                    🗑️ ตัดสินค้าออกจากออเดอร์
+                </button>
+            </div>
+        </div>
+
+        <button id="btnTabUpload" class="tab-btn" onclick="switchPage('pageUploadExcel', 'btnTabUpload')">
+            <span>📤 ทำ ฟวย (Upload Excel)</span>
+        </button>
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <div id="msg" class="msg"></div>
+
+            <div id="pageScan" class="page active">
+                <h2 class="page-title">🔍 สแกนตรวจสอบสินค้า (QC Inspection)</h2>
+                <div class="field-group">
+                    <input type="text" id="scanOrder" class="search-input" placeholder="สแกน หรือกรอก Tracking No. แล้วกด Enter" onkeydown="handleOrderScan(event)" autofocus>
+                </div>
+                <div id="orderDetail" style="display:none; margin-top:20px; border-top:2px solid #ccc; padding-top:15px;">
+                    <div class="order-detail-header">
+                        <h3 style="margin: 0;">ออเดอร์: <span id="txtTracking" style="color:#0d6efd;"></span></h3>
+                        <span id="totalItemsBadge" style="background-color: #17a2b8; color: #ffffff; padding: 6px 18px; border-radius: 50px; font-weight: bold; font-size: 14px; display: inline-block;">
+                            สแกนแล้ว 0 / 0 ชิ้น
+                        </span>
+                    </div>
+                    <div class="field-group">
+                        <input type="text" id="scanItem" class="search-input" placeholder="สแกน บาร์โค้ด / SKU สินค้า แล้วกด Enter" onkeydown="handleItemScan(event)" disabled>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>SKU สินค้า</th>
+                                    <th>ชื่อสินค้า / แบรนด์</th>
+                                    <th class="text-center">จำนวน (สแกน/ทั้งหมด)</th>
+                                    <th class="text-center">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbQCItems"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pageOrders" class="page">
+                <h2 class="page-title">📋 รายการออเดอร์ทั้งหมด (Orders)</h2>
+                <div class="field-group">
+                    <input type="text" id="searchOrderInput" class="search-input" placeholder="🔍 ค้นหา Tracking No. หรือ SKU สินค้า..." onkeyup="filterOrders()">
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tracking No.</th>
+                                <th>รายการสินค้า (จำนวน)</th>
+                                <th class="text-center">สถานะ QC</th>
+                                <th class="text-center">เวลาที่ QC</th>
+                                <th class="text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbOrders"></tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="pageOrdContainer"></div>
+            </div>
+
+            <div id="pageProducts" class="page">
+                <h2 class="page-title">📦 จัดการรายการสินค้า (Master Products)</h2>
+                <form id="frmAddProduct" onsubmit="saveProduct(event)">
+                    <div class="form-row">
+                        <input type="text" id="prodBrand" placeholder="แบรนด์/หมวดหมู่" required>
+                        <input type="text" id="prodSkuMerchant" placeholder="SKU Merchant" required>
+                        <input type="text" id="prodGtin" placeholder="GTIN / บาร์โค้ด">
+                        <button type="submit" class="btn-primary">➕ เพิ่มสินค้า</button>
+                    </div>
+                </form>
+                <div class="field-group">
+                    <input type="text" id="searchProdInput" class="search-input" placeholder="🔍 ค้นหาแบรนด์, SKU หรือ GTIN..." onkeyup="filterProducts()">
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>แบรนด์</th>
+                                <th>SKU Merchant</th>
+                                <th>GTIN</th>
+                                <th class="text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbProducts"></tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="pageProdContainer"></div>
+            </div>
+
+            <div id="pageSubReplace" class="page">
+                <h2 class="page-title">🔄 เปลี่ยนสินค้าทดแทน (Replace Product)</h2>
+                <form id="formSubstitute" onsubmit="saveReplaceAction(event)">
+                    <div class="form-grid">
+                        <input type="text" id="subTracking" class="input-box" placeholder="Tracking No." required>
+                        <select id="subOldSku" class="input-box" required>
+                            <option value="">-- เลือก SKU เดิม --</option>
+                        </select>
+                        <input type="number" id="subOldQty" class="input-box" value="1" min="1">
+                        <input type="text" id="subNewSku" class="input-box" list="listNewSku" placeholder="SKU ใหม่ที่จะใส่แทน (ต้องมีในระบบสินค้า)" autocomplete="off" required>
+                        <datalist id="listNewSku"></datalist>
+                    </div>
+                    <button type="submit" class="btn-submit" style="margin-top: 10px;">💾 บันทึกสินค้าทดแทน</button>
+                </form>
+                <div class="field-group">
+                    <input type="text" id="searchReplaceInput" class="search-input" placeholder="🔍 ค้นหา Tracking หรือ SKU สินค้าทดแทน..." onkeyup="filterSubstitutes()">
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tracking No.</th>
+                                <th>SKU เดิม</th>
+                                <th class="text-center">จำนวนเดิม</th>
+                                <th>SKU ใหม่</th>
+                                <th class="text-center">จำนวนใหม่</th>
+                                <th class="text-center">วันที่บันทึก</th>
+                                <th class="text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbSubReplace"></tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="pageReplaceContainer"></div>
+            </div>
+
+            <div id="pageSubDelete" class="page">
+                <h2 class="page-title">🗑️ ตัดสินค้าออกจากออเดอร์ (Delete Item)</h2>
+                <form id="deleteItemForm" onsubmit="removeItemFromOrder(event)">
+                    <div class="form-row">
+                        <input type="text" id="delTracking" placeholder="Tracking No." required>
+                        <select id="delSku" class="input-box" required>
+                            <option value="">-- เลือก SKU --</option>
+                        </select>
+                        <input type="number" id="delQty" value="1" min="1" required>
+                        <button type="submit" class="btn-danger">บันทึกตัดออก</button>
+                    </div>
+                </form>
+                <div class="field-group">
+                    <input type="text" id="searchDeleteInput" class="search-input" placeholder="🔍 ค้นหา Tracking หรือ SKU ที่ถูกตัด..." onkeyup="filterSubstitutes()">
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tracking No.</th>
+                                <th>SKU ที่ถูกตัด</th>
+                                <th class="text-center">จำนวนที่ตัด</th>
+                                <th class="text-center">สถานะ</th>
+                                <th class="text-center">วันที่บันทึก</th>
+                                <th class="text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbSubDelete"></tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="pageDeleteContainer"></div>
+            </div>
+
+            <div id="pageUploadExcel" class="page">
+                <h2 class="page-title">📤 ทำ ฟวย</h2>
+
+                <div class="compact-card">
+                    <div class="compact-row">
+                        <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="input-box">
+                        <button type="button" class="btn-submit-compact" onclick="uploadExcelFile()">⬆️ อัปโหลด</button>
+                    </div>
+                    <div id="uploadStatusBox" style="display:none; margin-top:8px;"></div>
+                    <div class="table-container" style="margin-top:8px;">
+                        <table>
+                            <thead>
+                                <tr id="excelPreviewHeader"></tr>
+                            </thead>
+                            <tbody id="excelPreviewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="fuaySummaryGrid" class="fuay-summary" style="margin-top:16px;"></div>
+
+                <div class="table-container">
+                    <table class="fuay-data-table">
+                        <thead>
+                            <tr id="fuayTableHeader"></tr>
+                        </thead>
+                        <tbody id="tbFuayData"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+<div id="appDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+    <div class="app-dialog-card">
+        <div class="app-dialog-icon">!</div>
+        <h3 id="appDialogTitle">แจ้งเตือน</h3>
+        <p id="appDialogMessage"></p>
+        <div class="app-dialog-actions">
+            <button id="appDialogCancel" class="app-dialog-btn app-dialog-btn-secondary" type="button">ยกเลิก</button>
+            <button id="appDialogOk" class="app-dialog-btn app-dialog-btn-primary" type="button">ตกลง</button>
+        </div>
+    </div>
+</div>
+<script src="config.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>-
