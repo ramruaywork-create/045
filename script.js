@@ -1023,16 +1023,8 @@ function renderFuaySummary(summary) {
 
     grid.innerHTML = `
         <div class="fuay-summary-row">${metricRow('ฟ ทั้งหมด', summary.flash)}</div>
-        <div class="fuay-summary-row fuay-summary-group">
-            <div class="fuay-box fuay-box-main fuay-box-tall">
-                <div class="fuay-box-label">ย+ว ทั้งหมด</div>
-                <div class="fuay-box-value">${summary.yingWikritTotal}</div>
-            </div>
-            <div class="fuay-summary-subrows">
-                <div class="fuay-summary-row">${metricRow('ย', summary.ying)}</div>
-                <div class="fuay-summary-row">${metricRow('ว', summary.wikrit)}</div>
-            </div>
-        </div>
+        <div class="fuay-summary-row">${metricRow('ย', summary.ying)}</div>
+        <div class="fuay-summary-row">${metricRow('ว', summary.wikrit)}</div>
     `;
 }
 
