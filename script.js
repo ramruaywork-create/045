@@ -138,7 +138,6 @@ let currentPage = { products: 1, orders: 1, substitutes: 1, cuts: 1 };
 let rowsPerPage = { products: 10, orders: 10, substitutes: 10, cuts: 10 };
 let pendingExcelData = null;
 let fuayData = [];
-let fuayLoaded = false;
 
 let currentQC = { trackingNo: '', items: [] };
 
@@ -146,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function () {
     loadData();
     setupOldSkuDropdown();
     setupScanAutoSelect();
+    loadFuayData();
 
     const excelInput = document.getElementById('excelFileInput');
     if (excelInput) excelInput.addEventListener('change', previewExcelFile);
@@ -500,7 +500,6 @@ function switchPage(pageId, btnId, isSubMenu = false) {
     }
 
     renderTables();
-    if (pageId === 'pageUploadExcel' && !fuayLoaded) loadFuayData();
     closeMobileMenu();
 }
 
@@ -653,7 +652,6 @@ function handleItemScan(event) {
     }
 
     item.scannedQty++;
-    speakScanSuccess();
     input.value = '';
     renderQCItems();
 
@@ -704,17 +702,6 @@ function updateQCSummary(scannedTotal, requiredTotal) {
     if (!badge) return;
     badge.innerText = `สแกนแล้ว ${scannedTotal} / ${requiredTotal} ชิ้น`;
     badge.style.backgroundColor = (scannedTotal === requiredTotal && requiredTotal > 0) ? '#28a745' : '#17a2b8';
-}
-
-function speakScanSuccess() {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance('สแกนสำเร็จ');
-    utterance.lang = 'th-TH';
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    window.speechSynthesis.speak(utterance);
 }
 
 async function saveQCSuccess(trackingNo) {
@@ -1005,8 +992,7 @@ async function loadFuayData() {
         }
 
         fuayData = result.data || [];
-        fuayLoaded = true;
-        window.fuayHeaders = (result.headers || ["ค้าง", "วิกฤติ", "ยิง", "แฟลช"]).slice(0, 4);
+        window.fuayHeaders = (result.headers || ["ค้าง ย", "ค้าง ว", "วิกฤติ", "ยิง", "แฟลช"]).slice(0, 5);
         renderFuayTable();
         renderFuaySummary(result.summary);
     } catch (err) {
@@ -1028,25 +1014,24 @@ function renderFuaySummary(summary) {
     function metricRow(mainLabel, s, mainExtra) {
         return `
             ${card(mainLabel, s.total, 'fuay-box-main ' + (mainExtra || ''))}
-            ${card('เจอ', s.found)}
-            ${card('หาย', s.missing)}
-            ${card('ส่ง', s.shipped)}
-            ${card('ค้าง', s.pending)}
+            ${card('เจอ', s.found, 'fuay-metric-found')}
+            ${card('หาย', s.missing, 'fuay-metric-missing')}
+            ${card('ส่ง', s.shipped, 'fuay-metric-shipped')}
+            ${card('ค้าง', s.pending, 'fuay-metric-pending')}
         `;
     }
 
-    const pendingTotal = [summary.flash, summary.ying, summary.wikrit]
-        .reduce((total, item) => total + (Number(item.pending) || 0), 0);
-
     grid.innerHTML = `
-        <div class="fuay-summary-panel">
-            <div class="fuay-summary-row fuay-row-yellow">${metricRow('ฟ ทั้งหมด', summary.flash)}</div>
-            <div class="fuay-summary-row fuay-row-blue">${metricRow('ย ทั้งหมด', summary.ying)}</div>
-            <div class="fuay-summary-row fuay-row-red">${metricRow('ว ทั้งหมด', summary.wikrit)}</div>
-        </div>
-        <div class="fuay-total-row">
-            ${card('ค้างทั้งหมด', pendingTotal, 'fuay-box-main')}
-            ${card('ย+ว ทั้งหมด', summary.yingWikritTotal, 'fuay-box-main')}
+        <div class="fuay-summary-row">${metricRow('ฟ ทั้งหมด', summary.flash)}</div>
+        <div class="fuay-summary-row fuay-summary-group">
+            <div class="fuay-box fuay-box-main fuay-box-tall">
+                <div class="fuay-box-label">ย+ว ทั้งหมด</div>
+                <div class="fuay-box-value">${summary.yingWikritTotal}</div>
+            </div>
+            <div class="fuay-summary-subrows">
+                <div class="fuay-summary-row">${metricRow('ย', summary.ying)}</div>
+                <div class="fuay-summary-row">${metricRow('ว', summary.wikrit)}</div>
+            </div>
         </div>
     `;
 }
@@ -1058,20 +1043,21 @@ function renderFuayTable() {
 
     const input = document.getElementById('searchFuayInput');
     const f = input ? input.value.toLowerCase().trim() : '';
-    const headers = (window.fuayHeaders || ['ค้าง', 'วิกฤติ', 'ยิง', 'แฟลช']).slice(0, 4);
+    const headers = (window.fuayHeaders || ['ค้าง ย', 'ค้าง ว', 'วิกฤติ', 'ยิง', 'แฟลช']).slice(0, 5);
 
-    const counts = [0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0];
     fuayData.forEach(row => {
         if (row.col1) counts[0]++;
         if (row.col2) counts[1]++;
         if (row.col3) counts[2]++;
         if (row.col4) counts[3]++;
+        if (row.col5) counts[4]++;
     });
 
     if (headerRow) headerRow.innerHTML = headers.map((h, idx) => `<th>${h || '-'} (${counts[idx]})</th>`).join('');
 
     if (fuayData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="padding:20px; color:#6c757d;">ไม่พบข้อมูล</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center" style="padding:20px; color:#6c757d;">ไม่พบข้อมูล</td></tr>`;
         return;
     }
 
@@ -1089,6 +1075,7 @@ function renderFuayTable() {
             <td>${cellHtml(row.col2)}</td>
             <td>${cellHtml(row.col3)}</td>
             <td>${cellHtml(row.col4)}</td>
+            <td>${cellHtml(row.col5)}</td>
         </tr>
     `).join('');
 }
