@@ -131,6 +131,53 @@
                         <button type="submit" class="btn-primary">➕ เพิ่มสินค้า</button>
                     </div>
                 </form>
+
+                <div class="compact-card" id="prodImportCard">
+                    <div class="compact-row">
+                        <span class="compact-label">📥 นำเข้าสินค้าจากไฟล์ Excel (ลบของเดิมทั้งหมด แล้วนำเข้าใหม่) — เลือกได้หลายไฟล์พร้อมกัน</span>
+                        <input type="file" id="prodExcelFileInput" accept=".xlsx,.xls" class="input-box" multiple>
+                        <button type="button" class="btn-danger-compact" id="btnImportProducts" onclick="importProductsFromExcel()" disabled>🗑️⬆️ ลบทั้งหมด แล้วนำเข้าใหม่</button>
+                    </div>
+
+                    <div id="prodImportMappingWrap" style="display:none; margin-top:10px;">
+                        <div class="mapping-grid">
+                            <div class="mapping-field">
+                                <label for="mapProdSku">คอลัมน์ SKU Merchant *</label>
+                                <select id="mapProdSku" class="input-box" onchange="renderProductImportPreview()"></select>
+                            </div>
+                            <div class="mapping-field">
+                                <label for="mapProdBrand">คอลัมน์ แบรนด์/หมวดหมู่</label>
+                                <select id="mapProdBrand" class="input-box" onchange="renderProductImportPreview()"></select>
+                            </div>
+                            <div class="mapping-field">
+                                <label for="mapProdGtin">คอลัมน์ GTIN / บาร์โค้ด</label>
+                                <select id="mapProdGtin" class="input-box" onchange="renderProductImportPreview()"></select>
+                            </div>
+                        </div>
+                        <div class="import-warning">
+                            ⚠️ เมื่อกด "ลบทั้งหมด แล้วนำเข้าใหม่" ระบบจะ<b>ลบสินค้าเดิมทุกรายการในระบบทิ้งทั้งหมด</b>
+                            แล้วใส่ข้อมูลจากไฟล์นี้แทนทั้งหมด <b>การกระทำนี้ไม่สามารถย้อนกลับได้</b>
+                        </div>
+                    </div>
+
+                    <div id="prodImportStatusBox" style="display:none; margin-top:8px;"></div>
+                    <div id="prodImportSummary" class="import-summary" style="display:none;"></div>
+
+                    <div class="table-container" id="prodImportPreviewWrap" style="display:none; margin-top:8px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>แบรนด์</th>
+                                    <th>SKU Merchant</th>
+                                    <th>GTIN</th>
+                                    <th class="text-center">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="prodImportPreviewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="field-group">
                     <input type="text" id="searchProdInput" class="search-input" placeholder="🔍 ค้นหาแบรนด์, SKU หรือ GTIN..." onkeyup="filterProducts()">
                 </div>
