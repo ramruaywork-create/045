@@ -138,6 +138,8 @@ let currentPage = { products: 1, orders: 1, substitutes: 1, cuts: 1 };
 let rowsPerPage = { products: 10, orders: 10, substitutes: 10, cuts: 10 };
 let pendingExcelData = null;
 let fuayData = [];
+let pendingProductImportData = null;   // { headers, rows } อ่านมาจากไฟล์ดิบ
+let pendingProductImportMapped = [];   // แถวที่ map แล้ว + สถานะ (ใหม่/ซ้ำในระบบ/ซ้ำในไฟล์/ไม่มี SKU)
 
 let currentQC = { trackingNo: '', items: [] };
 
@@ -149,6 +151,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const excelInput = document.getElementById('excelFileInput');
     if (excelInput) excelInput.addEventListener('change', previewExcelFile);
+
+    const prodExcelInput = document.getElementById('prodExcelFileInput');
+    if (prodExcelInput) prodExcelInput.addEventListener('change', previewProductExcelFile);
 });
 
 // ==========================================================
@@ -939,8 +944,8 @@ function renderExcelPreview(headers, dataRows) {
     }
 }
 
-function showUploadStatus(text, type) {
-    const box = document.getElementById('uploadStatusBox');
+function showUploadStatus(text, type, boxId) {
+    const box = document.getElementById(boxId || 'uploadStatusBox');
     if (!box) return;
     box.className = `msg ${type}`;
     box.innerText = text;
@@ -976,6 +981,287 @@ async function uploadExcelFile() {
         loadFuayData();
     } catch (err) {
         showUploadStatus('❌ เกิดข้อผิดพลาด: ' + err.message, 'error');
+    }
+}
+
+// ==========================================================
+//  นำเข้าสินค้าจากไฟล์ Excel (Master Products)
+//  รองรับไฟล์หลายรูปแบบ (เช่น export จาก BigSeller) โดยให้ผู้ใช้
+//  เลือกจับคู่คอลัมน์เอง (SKU Merchant / แบรนด์ / GTIN) ก่อนนำเข้าจริง
+// ==========================================================
+const PRODUCT_FIELD_KEYWORDS = {
+    gtin:  ['gtin', 'บาร์โค้ด', 'บาร์โคด', 'barcode'],
+    sku:   ['sku merchant', 'merchant sku', 'เลข sku', 'รหัส sku', 'sku code', 'sku'],
+    brand: ['แบรนด์', 'brand', 'ชื่อสำรอง sku merchant', 'ชื่อ sku']
+};
+
+function guessProductColumnIndex(headers, usedIdx, keywords) {
+    for (const kw of keywords) {
+        const idx = headers.findIndex((h, i) => !usedIdx.has(i) && String(h || '').trim().toLowerCase().includes(kw));
+        if (idx !== -1) return idx;
+    }
+    return -1;
+}
+
+function guessProductColumnMapping(headers, rows) {
+    const usedIdx = new Set();
+
+    const gtinIdx = guessProductColumnIndex(headers, usedIdx, PRODUCT_FIELD_KEYWORDS.gtin);
+    if (gtinIdx !== -1) usedIdx.add(gtinIdx);
+
+    const skuIdx = guessProductColumnIndex(headers, usedIdx, PRODUCT_FIELD_KEYWORDS.sku);
+    if (skuIdx !== -1) usedIdx.add(skuIdx);
+
+    let brandIdx = guessProductColumnIndex(headers, usedIdx, PRODUCT_FIELD_KEYWORDS.brand);
+
+    // ถ้าคอลัมน์ที่เดาไว้เป็น "แบรนด์" แต่ข้อมูลจริงว่างเปล่าเกือบทั้งหมด
+    // (ไฟล์บางแบบ เช่น BigSeller ใส่ชื่อแบรนด์ไว้ในคอลัมน์ "ชื่อ SKU" แทน)
+    // ให้ลองสลับไปใช้คอลัมน์ "ชื่อ SKU" ถ้ามีข้อมูลมากกว่า
+    const sample = rows.slice(0, 30);
+    const emptyRatio = idx => {
+        if (idx === -1 || sample.length === 0) return 1;
+        const empty = sample.filter(r => String(r[idx] || '').trim() === '').length;
+        return empty / sample.length;
+    };
+    if (emptyRatio(brandIdx) > 0.8) {
+        const altIdx = headers.findIndex((h, i) => i !== skuIdx && String(h || '').trim().toLowerCase().includes('ชื่อ sku'));
+        if (altIdx !== -1 && emptyRatio(altIdx) < emptyRatio(brandIdx)) brandIdx = altIdx;
+    }
+
+    return { skuIdx, brandIdx, gtinIdx };
+}
+
+function readWorkbookRowsFromFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
+
+                if (!rows || rows.length === 0) {
+                    resolve({ fileName: file.name, headers: [], rows: [] });
+                    return;
+                }
+                const headers = rows[0].map(h => String(h || '').trim());
+                const dataRows = rows.slice(1).filter(r => r.some(cell => String(cell || '').trim() !== ''));
+                resolve({ fileName: file.name, headers, rows: dataRows });
+            } catch (err) {
+                reject(new Error(`ไฟล์ "${file.name}": ${err.message}`));
+            }
+        };
+        reader.onerror = () => reject(new Error(`ไม่สามารถอ่านไฟล์ "${file.name}" ได้`));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function previewProductExcelFile() {
+    const fileInput = document.getElementById('prodExcelFileInput');
+    const files = Array.from(fileInput.files || []);
+
+    pendingProductImportData = null;
+    pendingProductImportMapped = [];
+    document.getElementById('prodImportMappingWrap').style.display = 'none';
+    document.getElementById('prodImportPreviewWrap').style.display = 'none';
+    document.getElementById('prodImportSummary').style.display = 'none';
+    document.getElementById('btnImportProducts').disabled = true;
+    if (!files.length) return;
+
+    showUploadStatus(`⏳ กำลังอ่านไฟล์ ${files.length} ไฟล์...`, 'success', 'prodImportStatusBox');
+
+    Promise.all(files.map(readWorkbookRowsFromFile))
+        .then(fileResults => {
+            let headers = null;
+            let headerMismatch = false;
+            let allRows = [];
+
+            fileResults.forEach(r => {
+                if (!r.rows.length) return;
+                if (!headers) {
+                    headers = r.headers;
+                } else if (r.headers.length !== headers.length) {
+                    headerMismatch = true;
+                }
+                allRows = allRows.concat(r.rows);
+            });
+
+            if (!headers || allRows.length === 0) {
+                showUploadStatus('❌ ไม่พบข้อมูลในไฟล์ที่เลือก', 'error', 'prodImportStatusBox');
+                return;
+            }
+
+            pendingProductImportData = { headers, rows: allRows };
+
+            const guess = guessProductColumnMapping(headers, allRows);
+            renderProductMappingSelects(headers, guess);
+            document.getElementById('prodImportMappingWrap').style.display = 'block';
+
+            const filesNote = files.length > 1 ? ` จาก ${files.length} ไฟล์` : '';
+            const mismatchNote = headerMismatch ? ' ⚠️ หมายเหตุ: บางไฟล์มีจำนวนคอลัมน์ไม่ตรงกัน กรุณาตรวจสอบการจับคู่คอลัมน์ให้ดี' : '';
+            showUploadStatus(`✅ อ่านไฟล์สำเร็จ พบ ${allRows.length} แถวข้อมูล${filesNote} — กรุณาตรวจสอบการจับคู่คอลัมน์ด้านล่าง${mismatchNote}`, 'success', 'prodImportStatusBox');
+
+            renderProductImportPreview();
+        })
+        .catch(err => {
+            showUploadStatus('❌ ไม่สามารถอ่านไฟล์ได้: ' + err.message, 'error', 'prodImportStatusBox');
+        });
+}
+
+function renderProductMappingSelects(headers, guess) {
+    const buildOptions = (selectedIdx, optional) => {
+        let html = optional ? `<option value="-1">-- ไม่ใช้ --</option>` : '';
+        headers.forEach((h, i) => {
+            html += `<option value="${i}" ${i === selectedIdx ? 'selected' : ''}>${h || '(คอลัมน์ ' + (i + 1) + ')'}</option>`;
+        });
+        return html;
+    };
+
+    document.getElementById('mapProdSku').innerHTML = buildOptions(guess.skuIdx, false);
+    document.getElementById('mapProdBrand').innerHTML = buildOptions(guess.brandIdx, true);
+    document.getElementById('mapProdGtin').innerHTML = buildOptions(guess.gtinIdx, true);
+}
+
+function buildMappedProductRows() {
+    if (!pendingProductImportData) return [];
+
+    const skuIdx = Number(document.getElementById('mapProdSku').value);
+    const brandIdx = Number(document.getElementById('mapProdBrand').value);
+    const gtinIdx = Number(document.getElementById('mapProdGtin').value);
+
+    const seenInFile = new Set();
+    const mapped = [];
+
+    pendingProductImportData.rows.forEach(r => {
+        const skuMerchant = skuIdx > -1 ? String(r[skuIdx] || '').trim() : '';
+        const brand = brandIdx > -1 ? String(r[brandIdx] || '').trim() : '';
+        const gtin = gtinIdx > -1 ? String(r[gtinIdx] || '').trim() : '';
+        const skuKey = skuMerchant.toLowerCase();
+
+        let status;
+        if (!skuMerchant) {
+            status = 'missing';
+        } else if (seenInFile.has(skuKey)) {
+            status = 'dup_in_file';
+        } else {
+            status = 'new';
+        }
+        if (skuMerchant) seenInFile.add(skuKey);
+
+        mapped.push({ brand, skuMerchant, gtin, status });
+    });
+
+    return mapped;
+}
+
+function renderProductImportPreview() {
+    if (!pendingProductImportData) return;
+
+    pendingProductImportMapped = buildMappedProductRows();
+
+    const statusLabel = {
+        new: '<span class="badge badge-completed">จะนำเข้า</span>',
+        dup_in_file: '<span class="badge badge-old">ซ้ำในไฟล์ (ใช้แถวแรก)</span>',
+        missing: '<span class="badge badge-old">ไม่มี SKU (ข้าม)</span>'
+    };
+
+    const body = document.getElementById('prodImportPreviewBody');
+    const previewRows = pendingProductImportMapped.slice(0, 15);
+    body.innerHTML = previewRows.map(row => `
+        <tr>
+            <td>${row.brand || '-'}</td>
+            <td><span class="sku-code">${row.skuMerchant || '-'}</span></td>
+            <td>${row.gtin || '-'}</td>
+            <td class="text-center">${statusLabel[row.status]}</td>
+        </tr>
+    `).join('');
+    if (pendingProductImportMapped.length > previewRows.length) {
+        body.innerHTML += `<tr><td colspan="4" class="text-center" style="color:#888;">... และอีก ${pendingProductImportMapped.length - previewRows.length} แถว</td></tr>`;
+    }
+    document.getElementById('prodImportPreviewWrap').style.display = 'block';
+
+    const total = pendingProductImportMapped.length;
+    const missing = pendingProductImportMapped.filter(r => r.status === 'missing').length;
+    const dupInFile = pendingProductImportMapped.filter(r => r.status === 'dup_in_file').length;
+    const newCount = pendingProductImportMapped.filter(r => r.status === 'new').length;
+    const currentTotal = (db.products || []).length;
+
+    const summaryBox = document.getElementById('prodImportSummary');
+    summaryBox.style.display = 'block';
+    summaryBox.innerHTML = `
+        พบในไฟล์ทั้งหมด <b>${total}</b> แถว &nbsp;|&nbsp;
+        จะนำเข้า <b style="color:#198754;">${newCount}</b> รายการ &nbsp;|&nbsp;
+        ซ้ำในไฟล์ <b>${dupInFile}</b> &nbsp;|&nbsp;
+        ไม่มี SKU <b>${missing}</b>
+        <br>⚠️ สินค้าเดิมในระบบตอนนี้มี <b>${currentTotal}</b> รายการ — จะถูก<b style="color:#dc3545;">ลบทิ้งทั้งหมด</b>แล้วแทนที่ด้วย <b style="color:#0d6efd;">${newCount}</b> รายการนี้
+    `;
+
+    document.getElementById('btnImportProducts').disabled = newCount === 0;
+}
+
+async function importProductsFromExcel() {
+    if (!pendingProductImportData) {
+        showAppAlert('กรุณาเลือกไฟล์ Excel ก่อนนำเข้า');
+        return;
+    }
+
+    const toImport = pendingProductImportMapped
+        .filter(r => r.status === 'new')
+        .map(({ brand, skuMerchant, gtin }) => ({ brand, skuMerchant, gtin }));
+
+    if (toImport.length === 0) {
+        showAppAlert('ไม่มีรายการที่ถูกต้องให้นำเข้า (ไม่มี SKU Merchant)');
+        return;
+    }
+
+    const currentTotal = (db.products || []).length;
+    const confirmMsg = `⚠️ ยืนยันลบสินค้าเดิมทั้งหมด (${currentTotal} รายการ) ออกจากระบบ แล้วนำเข้าสินค้าใหม่ ${toImport.length} รายการแทนหรือไม่?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`;
+    if (!await showAppConfirm(confirmMsg)) return;
+
+    const btn = document.getElementById('btnImportProducts');
+    if (btn) btn.disabled = true;
+
+    try {
+        showUploadStatus('⏳ กำลังลบข้อมูลสินค้าเดิมทั้งหมด...', 'success', 'prodImportStatusBox');
+        const clearResult = await apiPost('clearProducts', {});
+        if (clearResult.success === false) {
+            showUploadStatus('❌ ' + (clearResult.message || 'ลบข้อมูลเดิมไม่สำเร็จ'), 'error', 'prodImportStatusBox');
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        const CHUNK_SIZE = 300;
+        let importedTotal = 0;
+        let skippedTotal = 0;
+
+        for (let i = 0; i < toImport.length; i += CHUNK_SIZE) {
+            const chunk = toImport.slice(i, i + CHUNK_SIZE);
+            showUploadStatus(`⏳ กำลังนำเข้าข้อมูลใหม่... (${Math.min(i + CHUNK_SIZE, toImport.length)}/${toImport.length})`, 'success', 'prodImportStatusBox');
+
+            const result = await apiPost('importProducts', { products: chunk });
+            if (result.success === false) {
+                showUploadStatus('❌ ' + (result.message || 'เกิดข้อผิดพลาดระหว่างนำเข้า') + ` (นำเข้าไปแล้ว ${importedTotal} รายการก่อนเกิดปัญหา)`, 'error', 'prodImportStatusBox');
+                if (btn) btn.disabled = false;
+                loadData();
+                return;
+            }
+            importedTotal += (result.added != null ? result.added : chunk.length);
+            skippedTotal += (result.skipped || 0);
+        }
+
+        showUploadStatus(`✅ ลบของเดิมและนำเข้าใหม่สำเร็จ ${importedTotal} รายการ${skippedTotal ? ` (ข้ามซ้ำ ${skippedTotal} รายการ)` : ''}`, 'success', 'prodImportStatusBox');
+        document.getElementById('prodExcelFileInput').value = '';
+        document.getElementById('prodImportMappingWrap').style.display = 'none';
+        document.getElementById('prodImportPreviewWrap').style.display = 'none';
+        document.getElementById('prodImportSummary').style.display = 'none';
+        pendingProductImportData = null;
+        pendingProductImportMapped = [];
+        loadData();
+    } catch (err) {
+        showUploadStatus('❌ เกิดข้อผิดพลาด: ' + err.message, 'error', 'prodImportStatusBox');
+        if (btn) btn.disabled = false;
     }
 }
 
