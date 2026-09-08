@@ -273,8 +273,17 @@ select.input-box {
     min-width:64px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
+.fuay-box-compact {
+    flex: 1 1 140px;
+    min-width: 120px;
+    padding: 14px 12px;
+    border-left: 4px solid #d97706;
+    text-align: left;
+}
 .fuay-box-label { font-weight:600; font-size:12px; color:#8a94a6; letter-spacing:.2px; }
 .fuay-box-value { font-size:19px; margin-top:6px; color:#2c3e50; font-weight:700; }
+.fuay-box-compact .fuay-box-label { color: #a15c00; }
+.fuay-box-compact .fuay-box-value { font-size: 24px; color: #d97706; }
 
 /* ช่องยอดรวมหลัก (ฟ ทั้งหมด / ย+ว ทั้งหมด) — เน้นด้วยแถบสีข้างซ้าย + พื้นอ่อน */
 .fuay-box-main {
