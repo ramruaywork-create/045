@@ -384,6 +384,7 @@ function renderProducts() {
             <td><span class="sku-code">${p.skuMerchant}</span></td>
             <td>${p.gtin || '-'}</td>
             <td class="text-center">
+                <button class="btn-primary" onclick='editProductRow(${JSON.stringify(p)})'>✏️ แก้ไข</button>
                 <button class="btn-revert" onclick="deleteProductRow('${p.rowIndex}')">🗑️ ลบ</button>
             </td>
         </tr>
@@ -780,6 +781,9 @@ function playFeedbackSound(type) {
 async function saveProduct(e) {
     if (e && e.preventDefault) e.preventDefault();
 
+    const rowIndexInput = document.getElementById('prodEditRowIndex');
+    const editingRowIndex = rowIndexInput ? rowIndexInput.value.trim() : '';
+
     const data = {
         brand: document.getElementById('prodBrand') ? document.getElementById('prodBrand').value.trim() : '',
         skuMerchant: document.getElementById('prodSkuMerchant') ? document.getElementById('prodSkuMerchant').value.trim() : '',
@@ -789,15 +793,44 @@ async function saveProduct(e) {
     if (!data.skuMerchant) { showAppAlert('กรุณากรอก SKU สินค้า'); return; }
 
     try {
-        const result = await apiPost('addProduct', data);
+        let result;
+        if (editingRowIndex) {
+            result = await apiPost('updateProduct', { ...data, rowIndex: Number(editingRowIndex) });
+        } else {
+            result = await apiPost('addProduct', data);
+        }
         if (result.success === false) { showAppAlert(result.message || 'เกิดข้อผิดพลาด'); return; }
-        showAppAlert(result.message || 'บันทึกสินค้าเรียบร้อยแล้ว');
-        const form = document.getElementById('frmAddProduct');
-        if (form) form.reset();
+        showAppAlert(result.message || (editingRowIndex ? 'แก้ไขสินค้าเรียบร้อยแล้ว' : 'บันทึกสินค้าเรียบร้อยแล้ว'));
+        cancelEditProduct();
         loadData();
     } catch (err) {
         showAppAlert('เกิดข้อผิดพลาด: ' + err.message);
     }
+}
+
+function editProductRow(product) {
+    document.getElementById('prodEditRowIndex').value = product.rowIndex;
+    document.getElementById('prodBrand').value = product.brand || '';
+    document.getElementById('prodSkuMerchant').value = product.skuMerchant || '';
+    document.getElementById('prodGtin').value = product.gtin || '';
+
+    const btn = document.getElementById('btnSaveProduct');
+    if (btn) btn.textContent = '💾 บันทึกการแก้ไข';
+    const cancelBtn = document.getElementById('btnCancelEditProduct');
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+
+    document.getElementById('frmAddProduct').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelEditProduct() {
+    const form = document.getElementById('frmAddProduct');
+    if (form) form.reset();
+    document.getElementById('prodEditRowIndex').value = '';
+
+    const btn = document.getElementById('btnSaveProduct');
+    if (btn) btn.textContent = '➕ เพิ่มสินค้า';
+    const cancelBtn = document.getElementById('btnCancelEditProduct');
+    if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 async function removeItemFromOrder(e) {
