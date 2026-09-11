@@ -123,14 +123,16 @@
 
             <div id="pageProducts" class="page">
                 <h2 class="page-title">📦 จัดการรายการสินค้า (Master Products)</h2>
-                <form id="frmAddProduct" onsubmit="saveProduct(event)">
-                    <div class="form-row">
-                        <input type="text" id="prodBrand" placeholder="แบรนด์/หมวดหมู่" required>
-                        <input type="text" id="prodSkuMerchant" placeholder="SKU Merchant" required>
-                        <input type="text" id="prodGtin" placeholder="GTIN / บาร์โค้ด">
-                        <button type="submit" class="btn-primary">➕ เพิ่มสินค้า</button>
-                    </div>
-                </form>
+                    <form id="frmAddProduct" onsubmit="saveProduct(event)">
+                        <div class="form-row">
+                            <input type="hidden" id="prodEditRowIndex" value="">
+                            <input type="text" id="prodBrand" placeholder="แบรนด์/หมวดหมู่" required>
+                            <input type="text" id="prodSkuMerchant" placeholder="SKU Merchant" required>
+                            <input type="text" id="prodGtin" placeholder="GTIN / บาร์โค้ด">
+                            <button type="submit" class="btn-primary" id="btnSaveProduct">➕ เพิ่มสินค้า</button>
+                            <button type="button" class="btn-revert" id="btnCancelEditProduct" style="display:none;" onclick="cancelEditProduct()">✖️ ยกเลิก</button>
+                        </div>
+                    </form>
 
                 <div class="compact-card" id="prodImportCard">
                     <div class="compact-row">
