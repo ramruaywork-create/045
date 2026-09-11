@@ -34,10 +34,11 @@ function showAppConfirm(message) { return showAppDialog(message, true); }
 async function apiGet(action, params) {
     const url = new URL(API_URL);
     url.searchParams.set('action', action);
+    url.searchParams.set('_', Date.now()); // กันแคช: ทำให้ URL ไม่ซ้ำทุกครั้ง
     if (params) {
         Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
     }
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { cache: 'no-store' }); // สั่งเบราว์เซอร์ห้ามใช้แคชด้วย
     return res.json();
 }
 
